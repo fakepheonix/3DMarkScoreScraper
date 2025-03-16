@@ -16,6 +16,7 @@ python Main.py
 获取3DMark跑分数据，可以获取显卡/CPU的多种场景下的平均跑分。
 - CPU数据来源：3DMark CPU Profile
 - GPU数据来源：3DMark Time Spy, Time Spy Extreme, Port Royal, Steel Nomad
+
 支持设定一段时间（如5天），获取这段天数之前至今的平均分（如从5天前到今天）
 
 [3DMark Search](https://www.3dmark.com/search?#advanced?test=spy%20P&cpuId=&gpuId=1509&gpuCount=1&gpuType=ALL&deviceType=ALL&storageModel=ALL&showRamDisks=false&memoryChannels=0&country=&scoreType=graphicsScore&hofMode=true&showInvalidResults=false&freeParams=&minGpuCoreClock=&maxGpuCoreClock=&minGpuMemClock=&maxGpuMemClock=&minCpuClock=&maxCpuClock=)
