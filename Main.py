@@ -18,10 +18,10 @@ from Helper.Get3DMarkScore import GetNameFromId, GetMedianScoreFromId, TESTSCENE
 DATA_TYPE = Dict[int, Dict[str, Union[int, str]]]
 
 
-def GetAllDeviceInfo(IsCpu: bool, *Args: int) -> DATA_TYPE:
+def GetAllDeviceInfo(IsCpu: bool, time_range: int, *Args: int) -> DATA_TYPE:
     IdToDeviceInfo: DATA_TYPE
     DEVICE: str = "CPU" if IsCpu else "GPU"
-    MinId: int = 1
+    MinId: int = 1 if IsCpu else 1000
     MaxId: int = 4000 if IsCpu else 2000
     if len(Args) > 0:
         MinId = Args[0]
@@ -58,7 +58,10 @@ def GetAllDeviceInfo(IsCpu: bool, *Args: int) -> DATA_TYPE:
                             Item[TESTSCENE.CPU_ALLCORES.value[2]] = -1
                         else:
                             Item[TESTSCENE.GPU_GRAPHICS.value[2]] = -1
+                            Item[TESTSCENE.GPU_GRAPHICS_X.value[2]] = -1
                             Item[TESTSCENE.GPU_RAYTRACING.value[2]] = -1
+                            Item[TESTSCENE.GPU_STEELNOMAD_DX.value[2]] = -1
+                            Item[TESTSCENE.GPU_STEELNOMAD_VK.value[2]] = -1
                         IdToDeviceInfo[Result[0]] = Item
 
                         ProgressBar.set_description_str(
@@ -72,12 +75,16 @@ def GetAllDeviceInfo(IsCpu: bool, *Args: int) -> DATA_TYPE:
                 TESTSCENE.CPU_SINGLECORE,
                 TESTSCENE.CPU_ALLCORES,
                 TESTSCENE.GPU_GRAPHICS,
+                TESTSCENE.GPU_GRAPHICS_X,
                 TESTSCENE.GPU_RAYTRACING,
-            ]
+                TESTSCENE.GPU_STEELNOMAD_DX,
+                TESTSCENE.GPU_STEELNOMAD_VK,
+            ],
+            time_range: int
         ) -> None:
             Threads.clear()
             Threads.extend(
-                ThreadPool.submit(GetMedianScoreFromId, TestScene, i)
+                ThreadPool.submit(GetMedianScoreFromId, TestScene, i, time_range)
                 for i in tqdm(
                     IdToDeviceInfo.keys(), desc="Tasks Submitting...", unit="tasks"
                 )
@@ -105,12 +112,17 @@ def GetAllDeviceInfo(IsCpu: bool, *Args: int) -> DATA_TYPE:
         TestSceneList = (
             [TESTSCENE.CPU_SINGLECORE, TESTSCENE.CPU_ALLCORES]
             if IsCpu
-            else [TESTSCENE.GPU_GRAPHICS, TESTSCENE.GPU_RAYTRACING]
+            else [TESTSCENE.GPU_GRAPHICS,
+                  TESTSCENE.GPU_GRAPHICS_X,
+                  TESTSCENE.GPU_RAYTRACING,
+                  TESTSCENE.GPU_STEELNOMAD_DX,
+                  TESTSCENE.GPU_STEELNOMAD_VK
+                  ]
         )
         for TestScene in TestSceneList:
             print("------------------------------------------")
             print(f"Get {TestScene.value[2]}")
-            GetScore(TestScene)
+            GetScore(TestScene, time_range)
 
     return IdToDeviceInfo
 
@@ -128,12 +140,15 @@ def ProcessData(Data: DATA_TYPE, IsCpu: bool) -> None:
     )
     COL_VENDOR = "Vendor"
     COL_MODEL = "Model"
-    SCORE_LIMIT = 0
+    COL_DISPLAY_NAME = "Display Name"
+    SCORE_LIMIT = 1
     GUID_CLASS = CPUName if IsCpu else GPUName
 
     Df = pd.DataFrame(Data.values())
     # 剔除名字为空
     Df = Df[Df[COL_NAME] != ""]
+    # 尽可能剔除非游戏卡
+    Df = Df[~Df[COL_NAME].str.contains("Quadro|Pro|Ada|Embedded|Tesla", case=False)]
     # 数据转为int
     Df[COL_ID] = Df[COL_ID].astype(int)
     Df[COL_SCORE] = Df[COL_SCORE].astype(int)
@@ -141,11 +156,19 @@ def ProcessData(Data: DATA_TYPE, IsCpu: bool) -> None:
     Df = Df[Df[COL_SCORE] >= SCORE_LIMIT]
     # 根据Name生成GUID
     Df[COL_NAME_GUID] = Df[COL_NAME].apply(GUID_CLASS)
-    # 新增 Vendor，Model 列
+    # 剔除专业卡
+    Df = Df[Df[COL_NAME_GUID].apply(lambda obj: "PROFESSIONAL" not in obj.Features)]
+    # 剔除锁算力卡
+    Df = Df[Df[COL_NAME_GUID].apply(lambda obj: "LHR" not in obj.Features)]
+    # 新增 Vendor，Model，Display Name 列
     VendorSeries = Df[COL_NAME_GUID].apply(lambda Obj: Obj.Vendor)
     Df.insert(Df.columns.get_loc(COL_NAME), COL_VENDOR, VendorSeries)
     ModelSeries = Df[COL_NAME_GUID].apply(lambda Obj: Obj.Model)
     Df.insert(Df.columns.get_loc(COL_NAME), COL_MODEL, ModelSeries)
+    if not IsCpu:
+        DisplayNameSeries = Df[COL_NAME_GUID].apply(lambda Obj: Obj.DisplayName)
+        Df.insert(Df.columns.get_loc(COL_NAME), COL_DISPLAY_NAME, DisplayNameSeries)
+
     # 根据 Score 排序
     Df.sort_values(COL_SCORE, ascending=False, inplace=True)
     Df.reset_index(drop=True, inplace=True)
@@ -183,8 +206,17 @@ def Main() -> None:
         ).ask()
         IsCpu = "CPU" in Device
 
+        try:
+            time_range = int(input(f"要爬取近一段时间的数据吗？输入天数，不输入则爬取全部数据："))
+            if time_range <= 0:
+                time_range = 0
+            else:
+                print(f"将爬取近{time_range}天的数据。")
+        except ValueError:
+            time_range = 0
+        
         StartTime = time.time()
-        Data = GetAllDeviceInfo(IsCpu)
+        Data = GetAllDeviceInfo(IsCpu, time_range)
         print(f"\nTotal time:{time.time() - StartTime:.2f}s")
 
         SavePath = ChoseAFileToSave(

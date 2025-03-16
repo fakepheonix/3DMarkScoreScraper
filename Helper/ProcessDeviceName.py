@@ -158,6 +158,28 @@ class GPUName:
         self.Vendor: str = "Unknown"
         self.Model: str = "Unknown"
         self.Features: Set[str] = set()
+        self.DisplayName: str = Name
+
+        # 直接将一部分标识去除，作为显示用的名称
+        if "(notebook)" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("(notebook)", "")
+        if "(Notebook)" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("(Notebook)", "")
+        if "(Laptop)" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("(Laptop)", "")
+        if "AMD" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("AMD", "")
+        if "Radeon" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("Radeon", "")
+        if "NVIDIA" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("NVIDIA", "")
+        if "GeForce" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("GeForce", "")
+        if "Intel" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("Intel", "")
+        if "Arc" in self.DisplayName:
+            self.DisplayName = self.DisplayName.replace("Arc", "")
+        self.DisplayName = self.DisplayName.strip()
 
         # 规范化，将一些不规则内容去除
         # 全部大写
@@ -186,15 +208,33 @@ class GPUName:
         IsMAXQ: bool = bool(BeforeLen - len(TokenList))
         if IsMAXQ:
             self.Features.add("MAX-Q")
+            self.Features.add("LAPTOP")
+        
+        # 辨别移动端MX标识以及后缀M
+        Pattern_laptop = re.compile(r"\d+M$|MX|^\d+S$|^\d+T")
+        for Token in TokenList:
+            if Pattern_laptop.search(Token):
+                self.Features.add("LAPTOP")
 
         # 去掉功耗
         TokenList = GPUName.RemoveInfo(TokenList, r"^\d+(\.\d+)?W$")
         # 去掉Desktop, Graphics, GA10x, GPU标识
-        TokenList = GPUName.RemoveInfo(TokenList, r"^DESKTOP$|^GRAPHICS$|^GA\d+$|^GPU$")
+        TokenList = GPUName.RemoveInfo(TokenList, r"^GRAPHICS$|^GA\d+$|^GPU$")
+        BeforeLen = len(TokenList)
+        TokenList = GPUName.RemoveInfo(TokenList, r"^DESKTOP$")
+        IsDesktop: bool = bool(BeforeLen - len(TokenList))
+        if IsDesktop and "LAPTOP" in self.Features:
+            self.Features.remove("LAPTOP")
         # 去掉如 for 13th gen Processors/ 50th Anniversary 类型的标识
         TokenList = GPUName.RemoveInfo(
             TokenList, r"^FOR$|^\d+TH$|^GEN$|^PROCESSOR|^ANNIVERSARY$"
         )
+                
+        # 辨别专业卡型号
+        Pattern_professional = re.compile(r"^T\d+|^A\d+00|^P\d+|^T\d+|^TITAN$")
+        for Token in TokenList:
+            if Pattern_professional.search(Token):
+                self.Features.add("PROFESSIONAL")
 
         # 取得生产商, 并移除
         if len(TokenList) != 0:
